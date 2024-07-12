@@ -1,3 +1,7 @@
+##########################################################
+#           First Iteration described in-class           #
+##########################################################
+
 import requests
 from bs4 import BeautifulSoup
 
