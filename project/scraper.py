@@ -5,7 +5,7 @@ from time import sleep
 from bs4 import BeautifulSoup
 from elasticsearch import Elasticsearch
 from selenium import webdriver
-# from selenium.webdriver.chrome.service import Service # Not curently needed
+# from selenium.webdriver.chrome.service import Service # Not currently needed
 from selenium.webdriver.chrome.options import Options
 
 # Setup Chrome options
