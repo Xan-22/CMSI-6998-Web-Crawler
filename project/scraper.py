@@ -118,7 +118,20 @@ class WebCrawler:
 
 
     def check_filters(self, href):
-       return href.startswith("/articles/") or href.startswith("/news/")
+       # These cover most of our desired articles' URL patterns 
+       # on sites with infinitely scrolling main pages
+       # such as IGN, GameInformer, PCGamer, etc. 
+       # TODO: Add more as needed or map filters to specific sites for efficiency
+       return (href.startswith("/articles/") or 
+            href.startswith("/news/") or
+            href.startswith("/review/") or
+            href.startswith("/exclusive/") or
+            href.startswith("/preview/") or
+            href.startswith("/games/") or
+            href.startswith("/gaming-industry/"))
 
 
+# Primarily using these three for testing right now
 WebCrawler("https://www.ign.com/")
+#WebCrawler("https://www.gameinformer.com/")
+#WebCrawler("https://www.pcgamer.com/")
