@@ -5,7 +5,7 @@ from time import sleep
 from bs4 import BeautifulSoup
 from elasticsearch import Elasticsearch
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
+# from selenium.webdriver.chrome.service import Service # Not curently needed
 from selenium.webdriver.chrome.options import Options
 
 # Setup Chrome options
@@ -67,9 +67,9 @@ class WebCrawler:
         while self.page_num < stopping_point:
             print(f"\tPage: {self.page_num}")
             # Scroll one screen height each time
-            self.webdriver.execute_script("window.scrollTo(0, {screen_height}*{self.page_num});".format(screen_height=self.webdriver_screen_height, i=self.page_num))  
+            self.webdriver.execute_script("window.scrollTo(0, {screen_height}*{i});".format(screen_height=self.webdriver_screen_height, i=self.page_num))  
             self.page_num += 1
-            sleep(self.scroll_pause_time)
+            sleep(self.webdriver_scroll_pause_time)
             # Update scroll height each time after scrolled, as the scroll height can change after we scrolled the page
             scroll_height = self.webdriver.execute_script("return document.body.scrollHeight;")
             # Break the loop when the height we need to scroll to is larger than the total scroll height
@@ -117,8 +117,8 @@ class WebCrawler:
         self.write_to_elastic(decoded_url, str(self.webdriver.current_url))
 
 
-    def check_filters(self, url):
-       return url.startswith("/articles/") or url.startswith("/news/")
+    def check_filters(self, href):
+       return href.startswith("/articles/") or href.startswith("/news/")
 
 
 WebCrawler("https://www.ign.com/")
