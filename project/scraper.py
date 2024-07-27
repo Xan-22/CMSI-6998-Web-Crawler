@@ -17,14 +17,17 @@ CHROME_OPTIONS.add_argument("--disable-dev-shm-usage")  # Overcome limited resou
 class WebCrawler:
     def __init__(self, url_base):
 
+        print(f"Initializing WebCrawler for domain: {url_base}")
         self.url_base = url_base
         self.page_num = 1
 
         ###### Set up the Selenium webdrivers ######
         self.base_wd = webdriver.Chrome(options=CHROME_OPTIONS)
         self.base_wd.get(self.url_base)
+        print("Initialized Base WebDriver")
         self.article_wd = webdriver.Chrome(options=CHROME_OPTIONS)
         self.article_wd.get(self.url_base)
+        print("Initialized Article WebDriver")
         sleep(2) # Allow time for the web pages to open
 
         self.webdriver_scroll_pause_time = 1
@@ -41,10 +44,12 @@ class WebCrawler:
         print(self.es_client.info()) # Test
 
         ###### Initialize Redis ######
+        print("Initializing Redis cache")
         self.r = redis.Redis()
         self.r.flushall()
 
         # Run the crawler on initialization
+        print("Initialization complete. Running crawler...")
         self.run(url_base)
 
 
@@ -76,13 +81,15 @@ class WebCrawler:
 
     def write_to_elastic_webpages(self, decoded_url, html):
         # Keeping this function separate for readability
-        self.es_client.index(index='webpages', document={ 'url': decoded_url, 'html': html })
+        #self.es_client.index(index='webpages', document={ 'url': decoded_url, 'html': html })
+        return
 
 
     def write_to_elastic_articles(self, headline, date, author, body):
         # Keeping this function separate for readability
         # TODO: Get article headline
-        self.es_client.index(index='articles', document={ 'headline': headline, 'date': date, 'author': author, 'body': body })
+        #self.es_client.index(index='articles', document={ 'headline': headline, 'date': date, 'author': author, 'body': body })
+        return
 
 
     def start_crawl(self, url):
@@ -92,11 +99,12 @@ class WebCrawler:
 
         # Scrape each article
         while link := self.r.rpop("links"):
-            self.scrape_data(link)
+            self.scrape_data(self.url_base, link, self.article_wd)
             sleep(1) # Be nice to the server
 
 
     def scrape_links(self, url_base, webdriver):
+        print(f"Scraping Links from: {url_base}")
         self.scroll_page(webdriver, 5)
         soup = BeautifulSoup(webdriver.page_source, "html.parser") # This can probably be done without creating the object multiple times
 
@@ -112,6 +120,7 @@ class WebCrawler:
 
     
     def scrape_data(self, url_base, url, webdriver):
+        print (f"Scraping Data from: {url}")
         self.scroll_page(webdriver)
         soup = BeautifulSoup(self.article_wd.page_source, "html.parser")
 
