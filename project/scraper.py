@@ -60,36 +60,33 @@ class WebCrawler:
         self.start_crawl(starting_url)
 
         print("No more links to crawl!")
+        self.base_wd.quit()
+        self.article_wd.quit()
 
 
-    def scroll_page(self, webdriver, num_pages_to_scroll=5):
+    def scroll_page(self, webdriver, page_num, num_pages_to_scroll=5):
         # Scroll down num_pages screens(pages) max of html content each time this method is called
-        print("Scrolling {webdriver.current_url}")
-        stopping_point = self.page_num + num_pages_to_scroll
-        while self.page_num < stopping_point:
-            print(f"\tPage: {self.page_num}")
+        print(f"Scrolling {webdriver.current_url}")
+        stopping_point = page_num + num_pages_to_scroll
+        while page_num < stopping_point:
+            print(f"\tPage: {page_num}")
             # Scroll one screen height each time
-            webdriver.execute_script("window.scrollTo(0, {screen_height}*{i});".format(screen_height=self.webdriver_screen_height, i=self.page_num))  
-            self.page_num += 1
+            webdriver.execute_script("window.scrollTo(0, {screen_height}*{i});".format(screen_height=self.webdriver_screen_height, i=page_num))  
+            page_num += 1
             sleep(self.webdriver_scroll_pause_time)
             # Update scroll height each time after scrolled, as the scroll height can change after we scrolled the page
             scroll_height = webdriver.execute_script("return document.body.scrollHeight;")
             # Break the loop when the height we need to scroll to is larger than the total scroll height
-            if (self.webdriver_screen_height) * self.page_num > scroll_height:
+            if (self.webdriver_screen_height) * page_num > scroll_height:
                 break
 
 
     def write_to_elastic_webpages(self, decoded_url, html):
-        # Keeping this function separate for readability
-        #self.es_client.index(index='webpages', document={ 'url': decoded_url, 'html': html })
-        return
+        self.es_client.index(index='webpages', document={ 'url': decoded_url, 'html': html })
 
 
-    def write_to_elastic_articles(self, headline, date, author, body):
-        # Keeping this function separate for readability
-        # TODO: Get article headline
-        #self.es_client.index(index='articles', document={ 'headline': headline, 'date': date, 'author': author, 'body': body })
-        return
+    def write_to_elastic_articles(self, headline, date, author, body, topics):
+        self.es_client.index(index='articles', document={ 'headline': headline, 'date': date, 'author': author, 'body': body, 'topics': topics })
 
 
     def start_crawl(self, url):
@@ -99,7 +96,7 @@ class WebCrawler:
 
         # Scrape each article
         while link := self.r.rpop("links"):
-            self.scrape_data(self.url_base, link, self.article_wd)
+            self.scrape_data(self.url_base, link)
             sleep(1) # Be nice to the server
 
 
@@ -119,9 +116,8 @@ class WebCrawler:
         self.r.lpush("links", *links)
 
     
-    def scrape_data(self, url_base, url, webdriver):
+    def scrape_data(self, url_base, url):
         print (f"Scraping Data from: {url}")
-        self.scroll_page(webdriver)
         soup = BeautifulSoup(self.article_wd.page_source, "html.parser")
 
         # Cache page to elasticsearch
@@ -134,15 +130,25 @@ class WebCrawler:
         match (url_base): # TODO: Add more sites
             case "https://www.ign.com/":
                 headline = soup.find("h1").get_text()
+                authors = [ a.get_text() for a in soup.find_all("a", class_="jsx-3953721931 article-author underlined") ]
                 date = soup.find("time").get_text()
-                author = soup.find("a", class_="author").get_text()
-                body = soup.find("article").get_text()
-            #case "https://www.gameinformer.com/":
+                body = soup.find_all("p", class_="jsx-3649800006")
+                body_text = ""
+                for p in body:
+                    body_text += p.get_text() + "\n"
+                topics = [ t.get_text() for t in soup.find_all("a", attrs={"data-cy": "object-breadcrumb"}) ]
+            case "https://www.gameinformer.com/":
+                headline = "GameInformer: " + soup.find("h1", class_="page-title").get_text()
+                authors = [ a.get_text() for a in soup.find("div", class_="author-details").find_all("a") ]
+                date = soup.find("div", class_="author-details").get_text().split("on ")[1].split(" at")[0]
+                body = soup.find("div", class_="ds-main").find_all("p")
+                body_text = ""
+                for p in body:
+                    body_text += p.get_text() + "\n"
+                topics = [ t.get_text().strip("\n") for t in soup.find("div", class_="gi5--product--summary").find_all("a", attrs={"rel": "bookmark"}) ]
             #case "https://www.pcgamer.com/":
-            case default: # Should not happen
-                return
             
-        self.write_to_elastic_articles(headline, date, author, body)
+        self.write_to_elastic_articles(headline, date, authors, body_text, topics)
 
 
     def check_filters(self, url_base, href):
@@ -164,7 +170,7 @@ class WebCrawler:
                        href.startswith("/review/") or
                        href.startswith("/feature/") or
                        href.startswith("/blog/") or
-                       href.startswith("/video/"))
+                       href.startswith("/gamer-culture/"))
             case default: # Stick to chosen sites
                 return False
 
