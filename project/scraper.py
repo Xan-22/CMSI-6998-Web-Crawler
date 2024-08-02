@@ -18,7 +18,7 @@ CHROME_OPTIONS.add_argument("--disable-dev-shm-usage")  # Overcome limited resou
 class WebCrawler:
     def __init__(self, url_base, site_name):
 
-        self.site_name = site_name
+        self.iden = site_name
         print(f"{self.iden}: Initializing WebCrawler for domain: {url_base}")
         self.url_base = url_base
         self.page_num = 1
@@ -28,11 +28,10 @@ class WebCrawler:
         self.base_wd = webdriver.Chrome(options=CHROME_OPTIONS)
         self.base_wd.get(self.url_base)
         print(f"{self.iden}: Initialized Base WebDriver")
-        time.sleep(2) # Allow time for the web page to open
         self.article_wd = webdriver.Chrome(options=CHROME_OPTIONS)
         self.article_wd.get(self.url_base)
         print(f"{self.iden}: Initialized Article WebDriver")
-        time.sleep(2) # Allow time for the web page to open
+        time.sleep(2) # Allow time for the web pages to open
 
         self.webdriver_scroll_pause_time = 1
         self.webdriver_screen_height = self.base_wd.execute_script("return window.screen.height;")  # Get the screen height
@@ -44,8 +43,9 @@ class WebCrawler:
         es_cloud_id = os.getenv('ELASTIC_CLOUD_ID')
 
         self.es_client = Elasticsearch(
-            cloud_id=es_cloud_id,
-            http_auth=(es_username, es_password)
+            # TODO: ENTER YOUR ELASTICSEARCH CLOUD ID AND API KEY HERE
+            "",
+            api_key=""
            #"http://localhost:9200", # For local testing
            #basic_auth=(es_username, es_password)
         )
@@ -190,7 +190,7 @@ class WebCrawler:
         except Exception as e:
             print(f"{self.iden}: Invalid article format. Error: {e}\nSkipping...")
         else:
-            self.write_to_elastic_articles(self.site_name, headline, date, authors, body_text, topics)
+            self.write_to_elastic_articles(self.iden, headline, date, authors, body_text, topics)
 
 
     def check_filters(self, url_base, href):
