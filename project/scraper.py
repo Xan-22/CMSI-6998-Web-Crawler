@@ -31,10 +31,12 @@ CHROME_OPTIONS.add_argument("--no-sandbox")  # Bypass OS security model, REQUIRE
 CHROME_OPTIONS.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
 
 
-# Helper function to generate a hash ID for articles
-def generate_hash_id(site, headline, date):
-    combined_key = site + headline + date
-    return hashlib.md5(combined_key.encode('utf-8')).digest()
+# Helper function to generate a unique ID for articles
+def generate_id(site, headline, date):
+    combined_key = "".join(site.split()) + "".join(headline.split()) + "".join(date.split())
+    _id = combined_key.encode('utf-8')
+    # Elasticsearch did not like using hashed IDs
+    return _id
 
 
 class WebCrawler:
@@ -43,7 +45,7 @@ class WebCrawler:
         self.site = site
         self.subdirectory = subdirectory
         self.id = f"{self.site.name + self.subdirectory}"
-        print(f"{self.id}: Initializing WebCrawler for domain: {self.main_page}")
+        print(f"{self.id}: Initializing WebCrawler for domain: {self.site.value + self.subdirectory}")
         self.page_num = 1
         self.has_links = True
 
@@ -142,25 +144,52 @@ class WebCrawler:
             case SITE.IGN:
                 headline = soup.find("h1").get_text()
                 authors = [ a.get_text() if a is not None else "N/A" for a in soup.find_all("a", class_="jsx-3953721931 article-author underlined") ]
-                date = datetime.strptime(soup.find("meta", attrs={"property" : "article:published_time"}).get("content").split("T")[0], "%Y-%m-%d").strftime("%Y-%m-%d")
+                date = self.scrape_date(soup)
                 body = soup.find_all("p", class_="jsx-3649800006")
                 topics = [ t.get_text() if t is not None else "N/A" for t in soup.find_all("a", attrs={"data-cy": "object-breadcrumb"}) ]
             case SITE.GameInformer:
                 headline = soup.find("h1", class_="page-title").get_text()
                 authors = [ a.get_text() if a is not None else "N/A" for a in soup.find("div", class_="author-details").find_all("a") ]
-                date = datetime.strptime(soup.find("div", class_="author-details").get_text().split("on ")[1], "%b %d, %Y at %I:%M %p").strftime("%Y-%m-%d")
+                date = self.scrape_date(soup)
                 body = soup.find("div", class_="ds-main").find_all("p")
                 topics = [ t.get_text().strip("\n") if t is not None else "N/A" for t in soup.find("div", class_="gi5--product--summary").find_all("a", attrs={"rel": "bookmark"}) ]
             case SITE.PCGamer:
                 headline = soup.find("h1").get_text()
                 authors = [ a.get_text() if a is not None else "N/A" for a in soup.find("div", class_="author-byline__authors").find_all("a", class_="link author-byline__link") ]
-                date = datetime.strptime(soup.find("meta", attrs={"name": "pub_date"}).get("content").split("T")[0], "%Y-%m-%d").strftime("%Y-%m-%d")
+                date = self.scrape_date(soup)
                 body = soup.find("div", attrs={"id" : "article-body"}).find_all("p", class_=None)
                 topics = [ t.find("a").get_text().strip("\n") if t is not None else "N/A" for t in soup.find_all("div", class_="tag", attrs={"data-analytics-id" : "article-product"}) ]
         body_text = ""
         for p in body:
             body_text += p.get_text() + "\n"
         self.write_to_elastic_articles(self.site.name, headline, date, authors, body_text, topics)
+
+    def scrape_date(self, soup):
+        # Had a lot of trouble with finding publication dates.
+        # This method makes a few attempts for each site and gives
+        try:
+            match (self.site):
+                case SITE.IGN:
+                    raw_date = soup.find("meta", attrs={"property" : "article:published_time"})
+                    if (raw_date is not None):
+                        date = datetime.strptime(raw_date.get("content").split("T")[0], "%Y-%m-%d").strftime("%Y-%m-%d")
+                    else:
+                        raw_date = soup.find("div", class_="caption jsx-1541923331")
+                        date = datetime.strptime(raw_date.get_text().split("Posted: ")[1], "%b %d, %Y %I:%M %p").strftime("%Y-%m-%d")
+                case SITE.GameInformer:
+                    raw_date = soup.find("div", class_="author-details")
+                    date = datetime.strptime(raw_date.get_text().split("on ")[1], "%b %d, %Y at %I:%M %p").strftime("%Y-%m-%d")
+                case SITE.PCGamer:
+                    raw_date = soup.find("meta", attrs={"name": "pub_date"})
+                    if (raw_date is not None):
+                        date = datetime.strptime(raw_date.get("content").split("T")[0], "%Y-%m-%d").strftime("%Y-%m-%d")
+                    else:
+                        raw_date = soup.find("span", class_="article-byline__date").find("time", class_="relative-date").getAttribute("datetime")
+                        date = datetime.strptime(raw_date, "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d")
+            return date
+        except Exception as e:
+            print(f"{self.id}: Error scraping article date: {e}")
+            return "N/A"
 
 
     def extract_links(self, url, webdriver):
@@ -189,7 +218,7 @@ class WebCrawler:
             # Put links into a queue in Redis, call it "(name)-links"
             self.r.lpush(f"{self.id}-links", *links)
         else:
-            print(f"{self.id}: No links found after 5 attempts. Exiting.")
+            print(f"{self.id}: No links found after {attempts} attempts. Exiting.")
             self.has_links = False
 
 
@@ -199,13 +228,13 @@ class WebCrawler:
 
     def write_to_elastic_articles(self, site, headline, date, authors, body, topics):
         self.es_client.index(
-            index='articles', 
-            id = generate_hash_id(site, headline, date),
+            index='unique-articles', 
+            id = generate_id(site, headline, date),
             document={ 
                 'site': site, 
                 'headline': headline, 
                 'date': date, 
-                'author': authors, 
+                'authors': authors, 
                 'body': body, 
                 'topics': topics 
             }
