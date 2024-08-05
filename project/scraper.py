@@ -132,11 +132,12 @@ class WebCrawler:
         try:
             self.scrape_article_data(soup)
             # Cache article URLs to Elasticsearch
-            self.write_to_elastic_webpages(decoded_url, str(self.base_wd.current_url))
         except Exception as e:
             print(f"{self.id}: Invalid article format: {e}")
             self.scroll_page(self.article_wd, 1)
             self.extract_links(url, self.article_wd) # Try to find links on the page if it isn't an article
+        finally:
+            self.write_to_elastic_webpages(decoded_url, str(self.base_wd.current_url))
 
 
     def scrape_article_data(self, soup):
